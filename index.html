@@ -1250,24 +1250,18 @@ db.auth.onAuthStateChange(async (_event, session) => {
 document.addEventListener("DOMContentLoaded", async () => {
   const { data } = await db.auth.getSession();
 
-  // Proteksi session nyangkut
+  // 🔥 PAKSA LOGOUT JIKA ADA SESSION
   if (data.session) {
-    const isAdminUser = await checkIsAdmin();
-    if (!isAdminUser) {
-      await db.auth.signOut();
-    }
+    await db.auth.signOut();
   }
 
-  isAdmin = data.session ? await checkIsAdmin() : false;
-  adminPanel.style.display = isAdmin ? "block" : "none";
+  isAdmin = false;
+  adminPanel.style.display = "none";
   updateAdminButton();
-  initialRefresh();
-
-  if (isAdmin) renderRentalsTable();
+  loadBikes();
 
   adminBtn.onclick = () => {
-    if (isAdmin) logoutAdmin();
-    else loginModal.classList.add("show");
+    loginModal.classList.add("show");
   };
 });
 
