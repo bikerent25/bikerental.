@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 
-<link rel="icon" href="img/Logo Rental.png" sizes="36x36">
+<link rel="icon" href="img/Logo Rental.png" sizes="38x38">
 <link rel="icon" href="img/Logo Rental.png" sizes="48x48">
 <link rel="apple-touch-icon" href="img/Logo Rental.png">
 <title>Aplikasi Sewa Motor Rental Merah Putih</title>
@@ -1265,9 +1265,16 @@ document.addEventListener("DOMContentLoaded", () => {
   updateAdminButton();
   loadBikes();
 
-  adminBtn.onclick = () => {
+  adminBtn.onclick = async () => {
+  if (isAdmin) {
+    // 🔴 LOGOUT
+    if (!confirm("Yakin ingin logout dari admin?")) return;
+    await logoutAdmin();
+  } else {
+    // 🔐 LOGIN
     loginModal.classList.add("show");
-  };
+  }
+};
 });
 
 
@@ -1710,17 +1717,12 @@ document.getElementById("deleteAllRentalsBtn").onclick = async () => {
     const { error } = await db
       .from("rentals")
       .delete()
-      .not("id", "is", null);
+      .neq("status", "ongoing");
 
     if (error) {
       alert("Gagal menghapus semua riwayat: " + error.message);
       return;
     }
-
-    // Reset semua motor jadi available
-    await db.from("bikes")
-      .update({ status: "available" })
-      .not("id", "is", null);
 
     alert("Semua riwayat berhasil dihapus!");
     renderRentalsTable();
@@ -1732,125 +1734,100 @@ document.getElementById("deleteAllRentalsBtn").onclick = async () => {
    =============================== */
 
 async function returnBike(rentalId, bikeId) {
-  if (!confirm("Selesaikan sewa ini?")) return;
+  if (!confirm("Yakin ingin menyelesaikan sewa ini?")) return;
 
-  // Ambil data rental + harga motor
-  const { data: rental, error: err1 } = await db
-    .from("rentals")
-    .select("*, bikes(rate_hour, rate_day)")
-    .eq("id", rentalId)
-    .single();
+  try {
+    // 🔹 Ambil data rental + motor
+    const { data: rental, error } = await db
+      .from("rentals")
+      .select("*, bikes(name, rate_hour, rate_day)")
+      .eq("id", rentalId)
+      .single();
 
-  if (err1 || !rental) {
-    console.error(err1);
-    return alert("Gagal mengambil data rental!");
-  }
+    if (error || !rental) {
+      alert("Data sewa tidak ditemukan!");
+      return;
+    }
 
-  const start = new Date(rental.start_time);
-  const end = new Date();  // waktu dikembalikan otomatis
+    const start = new Date(rental.start_time);
+    const end = new Date(); // waktu sekarang
 
-  ///////////////////////////////
-  //* Hitung durasi otomatis
-  ///////////////////////////////
-  // Hitung durasi otomatis (jam)
-  const diffMs = end - start;
+    // =============================
+    // ⏱️ HITUNG DURASI (dengan toleransi 25 menit)
+    // =============================
+    const diffMs = end - start;
+    const totalMinutes = Math.floor(diffMs / (1000 * 60));
+    let hours = Math.floor(totalMinutes / 60);
+    const extraMinutes = totalMinutes % 60;
 
-  // total menit real
-  const totalMinutes = Math.floor(diffMs / (1000 * 60));
+    if (extraMinutes > 35) hours += 1;
+    if (hours < 1) hours = 1;
 
-  // jam penuh
-  let hours = Math.floor(totalMinutes / 60);
+    // =============================
+    // 💰 HITUNG TOTAL
+    // =============================
+    let total = 0;
+    if (hours >= 24) {
+      const days = Math.floor(hours / 24);
+      const extraHours = hours % 24;
+      total =
+        days * rental.bikes.rate_day +
+        extraHours * rental.bikes.rate_hour;
+    } else {
+      total = hours * rental.bikes.rate_hour;
+    }
 
-  // sisa menit
-  const extraMinutes = totalMinutes % 60;
-
-  // ⏱️ toleransi 25 menit
-  if (extraMinutes > 25) {
-    hours += 1;
-  }
-
-  // minimal 1 jam
-  if (hours < 1) hours = 1;
-
-//============================//
-  // Hitung total otomatis
-  const rateHour = rental.bikes.rate_hour;
-  const rateDay  = rental.bikes.rate_day;
-
-  // 🔥 HITUNG TOTAL SESUAI ATURAN
-  let total = 0;
-
-  if (hours >= 24) {
-    const days = Math.floor(hours / 24);
-    const extraHours = hours % 24;
-    total = (days * rateDay) + (extraHours * rateHour);
-  } else {
-    total = hours * rateHour;
-  }
-
-  // Update rental lengkap + return_time dalam format ISO
-  const { error: err2 } = await db
-    .from("rentals")
-    .update({
+    // =============================
+    // 🔄 UPDATE DATABASE
+    // =============================
+    await db.from("rentals").update({
       duration: hours,
       total: total,
       status: "finished",
-      return_time: end.toISOString()  // disimpan dalam ISO
-    })
-    .eq("id", rentalId);
+      return_time: end.toISOString()
+    }).eq("id", rentalId);
 
-  if (err2) {
-    console.error(err2);
-    return alert("Gagal update data sewa!");
-  }
+    await db.from("bikes")
+      .update({ status: "available" })
+      .eq("id", bikeId);
 
-  // Motor kembali tersedia
-  await db
-    .from("bikes")
-    .update({ status: "available" })
-    .eq("id", bikeId);
+    // =============================
+    // 📲 KIRIM WHATSAPP
+    // =============================
+    const waText = `
+    *Sewa Motor Selesai ✅*
 
-  /* ===============================
-       KIRIM PESAN WHATSAPP OTOMATIS
-     =============================== */
+    Nama: ${rental.name}
+    Motor: ${rental.bikes.name}
 
-  const text = `
-  *Sewa Motor Telah Selesai*
+    Mulai: ${toLocal(start)}
+    Selesai: ${toLocal(end)}
 
-  Nama: ${rental.name}
-  Mulai: ${toLocal(start)}
-  Kembali: ${toLocal(end)}
-  Durasi: ${diffHours} jam
-  Total: Rp ${total.toLocaleString("id-ID")}
+    Durasi Akhir: ${hours} jam
+    Total Biaya: Rp ${numberWithDots(total)}
 
-  Terima kasih telah menggunakan layanan kami 😊
-  `.trim();
+    Terima kasih telah menggunakan
+    *Rental Motor Merah Putih* 🇮🇩
+        `.trim();
 
-    function formatWA(num) {
-      return num.replace(/^\+?0/, "62").replace(/\s+/g, "");
-    }
+    const phone = rental.phone
+      .replace(/^\+?0/, "62")
+      .replace(/\s+/g, "");
 
-    const wa = formatWA(rental.phone);
-    const msg = encodeURIComponent(text);
-
-    // buka chat WA otomatis
-    window.open(`https://wa.me/${wa}?text=${msg}`, "_blank");
-
-    /* ===============================
-      NOTIFIKASI SELESAI SEWA REELTIME
-      =============================== */
-
-    alert(
-      `Sewa selesai!\n` +
-      `Mulai   : ${toLocal(start)}\n` +
-      `Kembali : ${toLocal(end)}\n` +
-      `Durasi  : ${diffHours} jam\n` +
-      `Total   : Rp ${total.toLocaleString()}`
+    window.open(
+      `https://wa.me/${phone}?text=${encodeURIComponent(waText)}`,
+      "_blank"
     );
 
-  renderRentalsTable();
-  loadBikes();
+    alert("Sewa selesai & WhatsApp terkirim!");
+    renderRentalsTable();
+    loadBikes();
+
+  } catch (err) {
+    alert("Gagal menyelesaikan sewa: " + err.message);
+  }
 }
+
 
 /* ===============================
    12. HAPUS TRANSAKSI (SUPABASE)
