@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 
-<link rel="icon" href="img/Logo Rental.png" sizes="32x32">
+<link rel="icon" href="img/Logo Rental.png" sizes="36x36">
 <link rel="icon" href="img/Logo Rental.png" sizes="48x48">
 <link rel="apple-touch-icon" href="img/Logo Rental.png">
 <title>Aplikasi Sewa Motor Rental Merah Putih</title>
@@ -37,7 +37,7 @@ window.addEventListener("scroll", () => {
   .container { max-width:1100px; margin:auto; }
   h1 { margin:0; font-size:22px; }
   .btn { background:#2b7a78; color:#fff; padding:8px 12px; border-radius:8px; border:none; cursor:pointer; }
-  .grid {display: grid;grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));gap: 20px}
+  .grid {display: grid;grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));gap: 20px}
   .card { background:rgb(255, 255, 255); padding:14px; border-radius:14px; box-shadow:0 6px 16px rgba(0,0,0,0.08); overflow: hidden;}
   .motor-img { height:180px; border-radius:8px; background:rgb(210, 210, 250); overflow: hidden;  display:flex; align-items:flex-end; justify-content:center; font-size:42px; }
   .status { padding:6px 8px; border-radius:8px; font-weight:600; }
@@ -526,9 +526,43 @@ window.addEventListener("scroll", () => {
   </div>
 </div>
 
+
+<!-- OMZET PER TANGGAL -->
+<div class="card mb-3">
+  <h5 class="mb-2">📅 Omzet Per Tanggal</h5>
+
+  <div class="table-responsive">
+    <table class="table table-bordered table-sm">
+      <thead class="table-light">
+        <tr>
+          <th style="width:50%">Tanggal</th>
+          <th>Total Omzet</th>
+        </tr>
+      </thead>
+      <tbody id="omzetTanggalTable">
+        <tr>
+          <td colspan="2" class="text-center text-muted">
+            Belum ada data
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <!-- TOTAL OMZET -->
 <div id="dailyTotalBox" class="mb-3 fw-bold text-success"></div>
 
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <button class="btn btn-sm" onclick="prevDay()">◀ Hari Sebelumnya</button>
+
+  <strong id="currentDayLabel">Tanggal</strong>
+
+  <button class="btn btn-sm" onclick="nextDay()">Hari Berikutnya ▶</button>
+</div>
+
+
+<!-- TABEL RIWAYAT SEWA -->
 <div class="table-responsive">
   <table class="rental-table">
   <thead>
@@ -1291,6 +1325,20 @@ function toLocal(dateInput) {
 }
 
 
+function toDateInputValue(dateInput) {
+  if (!dateInput) return "";
+  const d = new Date(dateInput);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`; // ✅ SESUAI input[type=date]
+}
+
+function safeText(val) {
+  if (val === null || val === undefined) return "";
+  return String(val).toLowerCase();
+}
+
 
 /* ===============================
    9. TAMBAH MOTOR (ADMIN) - simple prompt
@@ -1360,6 +1408,10 @@ document.getElementById("saveBikeBtn").onclick = async () => {
    =============================== */
 
 let allRentals = []; // simpan semua data asli
+let groupedByDate = {};
+let dateKeys = [];
+let currentDayIndex = 0;
+
 
 async function renderRentalsTable() {
   if (!isAdmin || isRenderingRentals) return;
@@ -1379,31 +1431,40 @@ async function renderRentalsTable() {
   allRentals = rentals;
   renderGroupedRentals(rentals);
   renderDailyTotal(rentals);
+  renderOmzetPerTanggal(rentals);
 
   isRenderingRentals = false;
 }
+
 
 function renderGroupedRentals(data) {
   const tbody = document.getElementById("rentalTable");
   tbody.innerHTML = "";
 
-  let lastDate = "";
-
+  // 🔹 GROUP PER TANGGAL
+  groupedByDate = {};
   data.forEach(r => {
-    const dateOnly = toDateOnly(r.start_time);
+    const date = toDateOnly(r.start_time);
+    if (!groupedByDate[date]) groupedByDate[date] = [];
+    groupedByDate[date].push(r);
+  });
 
-    // 🔹 JUDUL PER HARI
-    if (dateOnly !== lastDate) {
-      const dateRow = document.createElement("tr");
-      dateRow.innerHTML = `
-        <td colspan="12"
-          style="background:#f3f4f6;font-weight:bold;">
-          📅 ${dateOnly}
-        </td>`;
-      tbody.appendChild(dateRow);
-      lastDate = dateOnly;
-    }
+  dateKeys = Object.keys(groupedByDate).sort((a, b) => {
+    return new Date(b.split("-").reverse().join("-")) -
+           new Date(a.split("-").reverse().join("-"));
+  });
 
+  if (dateKeys.length === 0) return;
+
+  // Pastikan index aman
+  if (currentDayIndex >= dateKeys.length) {
+    currentDayIndex = 0;
+  }
+
+  const currentDate = dateKeys[currentDayIndex];
+  document.getElementById("currentDayLabel").innerText = `📅 ${currentDate}`;
+
+  groupedByDate[currentDate].forEach(r => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${r.name}</td>
@@ -1431,58 +1492,156 @@ function renderGroupedRentals(data) {
     `;
     tbody.appendChild(tr);
   });
+
+  // 🔹 UPDATE OMZET HARIAN
+  renderDailyTotal(groupedByDate[currentDate], currentDate);
 }
 
+/* NAVIGASI PER TANGGAL */
+function prevDay() {
+  if (currentDayIndex < dateKeys.length - 1) {
+    currentDayIndex++;
+    renderGroupedRentals(allRentals);
+  }
+}
+
+function nextDay() {
+  if (currentDayIndex > 0) {
+    currentDayIndex--;
+    renderGroupedRentals(allRentals);
+  }
+}
+
+
+/*FILTER RENTAL*/
 function applyRentalFilter() {
-  const q = document.getElementById("searchRental").value.toLowerCase();
+  currentDayIndex = 0;
+  if (!allRentals || allRentals.length === 0) return;
+
+  const q = document.getElementById("searchRental").value.trim().toLowerCase();
   const selectedDate = document.getElementById("filterDate").value;
 
-  let filtered = allRentals.filter(r => {
+  const filtered = allRentals.filter(r => {
+    // 🔍 TEXT SEARCH (AMAN SEMUA TIPE DATA)
     const textMatch =
-      r.name?.toLowerCase().includes(q) ||
-      r.phone?.toLowerCase().includes(q) ||
-      r.status?.toLowerCase().includes(q) ||
-      r.sudahbayar?.toLowerCase().includes(q) ||
-      r.bikes?.name?.toLowerCase().includes(q) ||
-      toLocal(r.start_time).toLowerCase().includes(q);
+      !q ||
+      safeText(r.name).includes(q) ||
+      safeText(r.phone).includes(q) ||
+      safeText(r.status).includes(q) ||
+      safeText(r.sudahbayar).includes(q) ||
+      safeText(r.bikes?.name).includes(q);
 
-    const dateMatch = selectedDate
-      ? new Date(r.start_time).toISOString().slice(0, 10) === selectedDate
-      : true;
+    // 📅 DATE FILTER
+    const rentalDate = toDateInputValue(r.start_time);
+    const dateMatch = selectedDate ? rentalDate === selectedDate : true;
 
     return textMatch && dateMatch;
   });
 
   renderGroupedRentals(filtered);
-  renderDailyTotal(filtered);
+  renderOmzetPerTanggal(filtered);
+  renderDailyTotal(filtered, selectedDate);
 }
 
-function renderDailyTotal(data) {
-  const box = document.getElementById("dailyTotalBox");
 
+
+/* RENDER TOTAL OMZET HARIAN */
+function renderDailyTotal(data, selectedDate = "") {
+  const box = document.getElementById("dailyTotalBox");
   if (!box) return;
+
+  if (data.length === 0) {
+    box.innerHTML = "📊 Total Omzet: Rp 0";
+    return;
+  }
 
   const total = data.reduce((sum, r) => sum + (r.total || 0), 0);
 
   box.innerHTML = `
-    📊 Total Omzet:
+    📊 Total Omzet ${selectedDate ? `(${selectedDate})` : ""}:
     <span style="font-size:18px">
       Rp ${numberWithDots(total)}
     </span>
   `;
 }
 
+function renderOmzetPerTanggal(data) {
+  const tbody = document.getElementById("omzetTanggalTable");
+  if (!tbody) return;
 
-function resetFilter() {
-  document.getElementById("searchRental").value = "";
-  document.getElementById("filterDate").value = "";
-  renderGroupedRentals(allRentals);
-  renderDailyTotal(allRentals);
+  if (!data || data.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="2" class="text-center text-muted">
+          Tidak ada data
+        </td>
+      </tr>`;
+    return;
+  }
+
+  // ===============================
+  // GROUP BY TANGGAL
+  // ===============================
+  const grouped = {};
+  let grandTotal = 0;
+
+  data.forEach(r => {
+    const dateKey = toDateOnly(r.start_time);
+    const total = r.total || 0;
+
+    grouped[dateKey] = (grouped[dateKey] || 0) + total;
+    grandTotal += total; // 🔥 TOTAL KESELURUHAN
+  });
+
+  // SORT TANGGAL TERBARU
+  const sortedDates = Object.keys(grouped).sort(
+    (a, b) =>
+      new Date(b.split("-").reverse().join("-")) -
+      new Date(a.split("-").reverse().join("-"))
+  );
+
+  tbody.innerHTML = "";
+
+  // ===============================
+  // ROW PER TANGGAL
+  // ===============================
+  sortedDates.forEach(date => {
+    tbody.innerHTML += `
+      <tr>
+        <td>${date}</td>
+        <td class="fw-bold text-success">
+          Rp ${numberWithDots(grouped[date])}
+        </td>
+      </tr>
+    `;
+  });
+
+  // ===============================
+  // ROW TOTAL KESELURUHAN
+  // ===============================
+  tbody.innerHTML += `
+    <tr class="table-success">
+      <td class="fw-bold text-uppercase">
+        💰 Total Omzet Keseluruhan
+      </td>
+      <td class="fw-bold fs-6">
+        Rp ${numberWithDots(grandTotal)}
+      </td>
+    </tr>
+  `;
 }
 
 
+/* RESET FILTER */
+function resetFilter() {
+  currentDayIndex = 0;
+  document.getElementById("searchRental").value = "";
+  document.getElementById("filterDate").value = "";
 
-
+  renderGroupedRentals(allRentals);
+  renderOmzetPerTanggal(allRentals);
+  renderDailyTotal(allRentals);
+}
 
 
 /* ===============================
@@ -1744,61 +1903,167 @@ initialRefresh();
    =============================== */
 
 async function downloadPdfSupabase() {
-  const { data: rentals } = await db
-    .from("rentals")
-    .select("*")
-    .order("start_time", { ascending: false });
-
-  if (!rentals || rentals.length === 0) {
-    alert("Belum ada data sewa.");
+  if (!allRentals || allRentals.length === 0) {
+    alert("Tidak ada data untuk dicetak!");
     return;
   }
 
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF("l", "pt", "a4");
+  const doc = new jsPDF("p", "mm", "a4");
 
-  doc.setFontSize(14);
-  doc.text("LAPORAN RIWAYAT SEWA MOTOR", 40, 40);
+  let y = 15;
 
-  const rows = [];
+  /* ===============================
+     HITUNG TOTAL KESELURUHAN
+  ================================ */
+  let grandTotal = 0;
+  allRentals.forEach(r => grandTotal += (r.total || 0));
 
-  for (const r of rentals) {
-    const { data: bike } = await db
-      .from("bikes")
-      .select("name")
-      .eq("id", r.bike_id)
-      .single();
+  /* ===============================
+     HEADER UTAMA
+  ================================ */
+  doc.setFontSize(16);
+  doc.setFont(undefined, "bold");
+  doc.text("LAPORAN OMZET RENTAL MOTOR MERAH PUTIH", 105, y, { align: "center" });
 
-    rows.push([
-    r.name || "-",
-    bike ? bike.name : "-",
-    r.phone || "-",
-    r.duration ? r.duration + " jam" : "-",
-    "Rp " + numberWithDots(r.total),
-    toLocal(r.start_time),
-    toLocal(r.end_time),                                  // Selesai
-    (r.ktp ? "KTP " : "") + (r.ktm ? "KTM" : "") + (r.belumbayar ? "Belum Bayar" : "") || "-",  // KTP/KTM/Belum Bayar
-    toLocal(r.return_time),                               // Kembalikan
-    r.sudahbayar || "-",
-    r.status || "-"
-  ]);
+  y += 8;
+  doc.setFontSize(12);
+  doc.text(
+    `TOTAL OMZET : Rp ${numberWithDots(grandTotal)}`,
+    105,
+    y,
+    { align: "center" }
+  );
 
-  }
+  y += 6;
+  doc.setFontSize(10);
+  doc.setFont(undefined, "normal");
+  doc.text(
+    `Dicetak pada: ${new Date().toLocaleDateString("id-ID")} ${new Date().toLocaleTimeString("id-ID")}`,
+    105,
+    y,
+    { align: "center" }
+  );
 
-  doc.autoTable({
-    startY: 70,
-    head: [[
-      "Nama", "Motor", "No HP", "Durasi",
-      "Total", "Mulai","Selesai", "KTP/KTM/(Belum Bayar)","Kembalikan", "Sudah Bayar",  "Status"
-    ]],
-    body: rows,
-    styles: { fontSize: 9 }
+  y += 10;
+
+  /* ===============================
+     GROUP DATA PER TANGGAL
+  ================================ */
+  const grouped = {};
+  allRentals.forEach(r => {
+    const dateKey = toDateOnly(r.start_time);
+    if (!grouped[dateKey]) grouped[dateKey] = [];
+    grouped[dateKey].push(r);
   });
 
-  doc.save("Buku_Kas_Sewa_Motor.pdf");
+  const sortedDates = Object.keys(grouped).sort(
+    (a, b) =>
+      new Date(a.split("-").reverse().join("-")) -
+      new Date(b.split("-").reverse().join("-"))
+  );
+
+  /* ===============================
+     LOOP PER HARI
+  ================================ */
+  for (const date of sortedDates) {
+    const dailyData = grouped[date];
+    const dailyTotal = dailyData.reduce((s, r) => s + (r.total || 0), 0);
+
+    // Judul hari (TANPA EMOJI)
+    doc.setFontSize(12);
+    doc.setFont(undefined, "bold");
+    doc.text(`Tanggal : ${date}`, 14, y);
+    y += 6;
+
+    doc.setFontSize(11);
+    doc.text(`Total Omzet Hari Ini : Rp ${numberWithDots(dailyTotal)}`, 14, y);
+    y += 4;
+
+    doc.setDrawColor(150);
+    doc.line(14, y, 196, y);
+    y += 4;
+
+    /* ===============================
+       TABEL RIWAYAT SEWA
+    ================================ */
+    doc.autoTable({
+      startY: y,
+      head: [[
+        "Nama",
+        "Motor",
+        "No HP",
+        "Durasi",
+        "Total",
+        "Mulai",
+        "Selesai",
+        "Keterangan",
+        "Kembalikan",
+        "Sudah Bayar",
+        "Status"
+      ]],
+      body: dailyData.map(r => {
+        const keterangan = [
+          r.ktp ? "KTP" : null,
+          r.ktm ? "KTM" : null,
+          r.belumbayar ? "Belum Bayar" : null
+        ].filter(Boolean).join(", ") || "-";
+
+        return [
+          r.name || "-",
+          r.bikes?.name || "-",          // ✅ FIX bike
+          r.phone || "-",
+          r.duration ? r.duration + " jam" : "-",
+          "Rp " + numberWithDots(r.total || 0),
+          toLocal(r.start_time),
+          toLocal(r.end_time),
+          keterangan,
+          r.return_time ? toLocal(r.return_time) : "-",
+          r.sudahbayar || "-",
+          r.status || "-"
+        ];
+      }),
+      styles: {
+        fontSize: 8,
+        cellPadding: 2
+      },
+      headStyles: {
+        fillColor: [10, 140, 120]
+      },
+      columnStyles: {
+        4: { halign: "right" }
+      },
+      margin: { left: 14, right: 14 }
+    });
+
+    y = doc.lastAutoTable.finalY + 10;
+
+    if (y > 260) {
+      doc.addPage();
+      y = 15;
+    }
+  }
+
+  /* ===============================
+     FOOTER
+  ================================ */
+  const pageCount = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(9);
+    doc.text(
+      `Rental Motor Merah Putih | Halaman ${i} dari ${pageCount}`,
+      105,
+      290,
+      { align: "center" }
+    );
+  }
+
+  /* ===============================
+     SIMPAN FILE
+  ================================ */
+  doc.save(`Laporan_Omzet_Rental_${Date.now()}.pdf`);
 }
-
-
 </script>
 </body>
 </html>
