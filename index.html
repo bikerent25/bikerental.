@@ -713,7 +713,18 @@ window.addEventListener("scroll", () => {
 const SUPABASE_URL = "https://ksytftojgsjiovwdpcbw.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtzeXRmdG9qZ3NqaW92d2RwY2J3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjYzODcxMjYsImV4cCI6MjA4MTk2MzEyNn0.rSslnj1Ca_XteV8NmAt_srGuq4shecJk4nS00B0yQjg";
 
-const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const db = supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
+  }
+);
+
 
 /* ===============================
      2. REALTIME SUBSCRIBE
@@ -1237,7 +1248,7 @@ async function checkIsAdmin() {
 }
 
 /* AUTH LISTENER (SATU KALI) */
-db.auth.onAuthStateChange(async (_event, session) => {
+db.auth.onAuthStateChange((_event, session) => {
   if (!session) {
     isAdmin = false;
     adminPanel.style.display = "none";
@@ -1246,15 +1257,9 @@ db.auth.onAuthStateChange(async (_event, session) => {
   }
 });
 
+
 /* INIT */
-document.addEventListener("DOMContentLoaded", async () => {
-  const { data } = await db.auth.getSession();
-
-  // 🔥 PAKSA LOGOUT JIKA ADA SESSION
-  if (data.session) {
-    await db.auth.signOut();
-  }
-
+document.addEventListener("DOMContentLoaded", () => {
   isAdmin = false;
   adminPanel.style.display = "none";
   updateAdminButton();
@@ -1264,6 +1269,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     loginModal.classList.add("show");
   };
 });
+
 
 
 /* UI */
