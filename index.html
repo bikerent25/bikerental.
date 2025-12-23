@@ -1249,6 +1249,15 @@ db.auth.onAuthStateChange(async (_event, session) => {
 /* INIT */
 document.addEventListener("DOMContentLoaded", async () => {
   const { data } = await db.auth.getSession();
+
+  // Proteksi session nyangkut
+  if (data.session) {
+    const isAdminUser = await checkIsAdmin();
+    if (!isAdminUser) {
+      await db.auth.signOut();
+    }
+  }
+
   isAdmin = data.session ? await checkIsAdmin() : false;
   adminPanel.style.display = isAdmin ? "block" : "none";
   updateAdminButton();
@@ -1261,6 +1270,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     else loginModal.classList.add("show");
   };
 });
+
 
 /* UI */
 function updateAdminButton() {
@@ -2064,6 +2074,37 @@ async function downloadPdfSupabase() {
   ================================ */
   doc.save(`Laporan_Omzet_Rental_${Date.now()}.pdf`);
 }
+
+
+
+/* ===============================
+   AUTO LOGOUT SAAT TAB / APP DITUTUP
+================================ */
+
+// Logout otomatis ketika tab ditutup / browser keluar
+window.addEventListener("beforeunload", () => {
+  try {
+    // Hanya logout jika sedang admin
+    if (isAdmin) {
+      navigator.sendBeacon(
+        "/logout",
+        JSON.stringify({ logout: true })
+      );
+      db.auth.signOut();
+    }
+  } catch (e) {
+    console.warn("Auto logout gagal:", e);
+  }
+});
+
+// Untuk mobile browser (lebih akurat)
+window.addEventListener("pagehide", () => {
+  if (isAdmin) {
+    db.auth.signOut();
+  }
+});
+
+
 </script>
 </body>
 </html>
