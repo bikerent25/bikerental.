@@ -1760,7 +1760,7 @@ async function returnBike(rentalId, bikeId) {
     let hours = Math.floor(totalMinutes / 60);
     const extraMinutes = totalMinutes % 60;
 
-    if (extraMinutes > 35) hours += 1;
+    if (extraMinutes > 15) hours += 1;
     if (hours < 1) hours = 1;
 
     // =============================
@@ -2104,6 +2104,7 @@ window.addEventListener("pagehide", () => {
 </script>
 </body>
 </html>
+
 
 
 
